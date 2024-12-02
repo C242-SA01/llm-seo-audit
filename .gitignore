@@ -1,0 +1,20 @@
+# Ignore virtual environment
+env/
+
+# Ignore sensitive configuration files
+api_key.env
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore OS-specific files
+Thumbs.db
+.DS_Store
+
+# Abaikan file atau folder yang dihasilkan Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Abaikan file log
+*.log
