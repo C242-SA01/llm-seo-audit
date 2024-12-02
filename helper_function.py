@@ -508,12 +508,12 @@ client = OpenAI(
 
 
 def generate_notes(url, maxpages):
-    all_category_data = get_pagespeed_scores(url, strategy="mobile", categories=None),
-    data = scrape_metatags_and_structure(url),
-    structure_value = predict_seo_structure(url),
-    grade_category = grade_category(url),
-    mobile = mobile_friendly(url),
-    siteliner = siteliner_run_example(url, maxpages),
+    all_category_data = get_pagespeed_scores(url, strategy="mobile", categories=None)
+    data = scrape_metatags_and_structure(url)
+    structure_value = predict_seo_structure(url)
+    grade_category = grade_category(url)
+    mobile = mobile_friendly(url)
+    siteliner = siteliner_run_example(url, maxpages)
     all_data = {
         "URL" : url,
         "Structure" : structure_value,
@@ -576,12 +576,12 @@ def generate_notes(url, maxpages):
     return completion.choices[0].message.content
 
 def generate_recommendation(url, maxpages):
-    all_category_data = get_pagespeed_scores(url, strategy="mobile", categories=None),
-    data = scrape_metatags_and_structure(url),
-    structure_value = predict_seo_structure(url),
-    grade_category = grade_category(url),
-    mobile = mobile_friendly(url),
-    siteliner = siteliner_run_example(url, maxpages),
+    all_category_data = get_pagespeed_scores(url, strategy="mobile", categories=None)
+    data = scrape_metatags_and_structure(url)
+    structure_value = predict_seo_structure(url)
+    grade_category = grade_category(url)
+    mobile = mobile_friendly(url)
+    siteliner = siteliner_run_example(url, maxpages)
     all_data = {
         "URL" : url,
         "Structure" : structure_value,
