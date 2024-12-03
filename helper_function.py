@@ -6,6 +6,7 @@ from modeling import train_model, predict_model
 import sys
 import cgi
 import urllib
+from urllib.parse import urljoin
 import json
 import time
 import pprint
@@ -65,11 +66,25 @@ def get_pagespeed_scores(url, strategy="mobile", categories=None):
 # Fungsi untuk request ke URL
 def request_web(url, endpoint=""):
     try:
-        file_url = f"{url}/{endpoint}" 
-        response = requests.get(file_url, timeout=10)
-        response.raise_for_status()  # Raise HTTPError untuk status code yang buruk
-        soup = BeautifulSoup(response.text, 'html.parser')
-        return soup
+        # Gabungkan URL dasar dengan endpoint menggunakan urljoin
+        full_url = urljoin(url, endpoint)
+        
+        # Tambahkan header untuk menyertakan User-Agent
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        
+        # Kirim permintaan ke server
+        response = requests.get(full_url, headers=headers, timeout=10)
+        response.raise_for_status()  # Raise HTTPError untuk status kode >= 400
+        
+        # Jika endpoint tidak ditentukan, kembalikan BeautifulSoup
+        if not endpoint:
+            return BeautifulSoup(response.text, 'html.parser')
+        
+        # Jika endpoint ditentukan, kembalikan respons objek
+        return response
+    
     except requests.exceptions.RequestException as e:
         print(f"Terjadi kesalahan saat mengambil data dari URL: {e}")
         return None
@@ -133,16 +148,14 @@ def cek_sitemap(url):
     response = request_web(url, "sitemap.xml")
     if response and response.status_code == 200:
         return "Yes"
-    else:
-        return "No"
+    return "No"
 
 # Fungsi untuk cek robots.txt
 def cek_robots(url):
     response = request_web(url, "robots.txt")
     if response and response.status_code == 200:
         return "Yes"
-    else:
-        return "No"
+    return "No"
 
 # Jika perlu menambahkan fungsi `find_favicon`, definisikan juga di sini.
 def find_favicon(soup):
@@ -507,138 +520,140 @@ client = OpenAI(
 )
 
 
-def generate_notes(url, maxpages):
-    all_category_data = get_pagespeed_scores(url, strategy="mobile", categories=None)
-    data = scrape_metatags_and_structure(url)
-    structure_value = predict_seo_structure(url)
-    grade_category = grade_category(url)
-    mobile = mobile_friendly(url)
-    siteliner = siteliner_run_example(url, maxpages)
-    all_data = {
-        "URL" : url,
-        "Structure" : structure_value,
-        "Grade" : grade_category,
-        #pagespeed result
-        "Performance" : all_category_data['performance'],
-        "Accessibility" : all_category_data['accessibility'],
-        "Best Practices" : all_category_data['best-practices'],
-        "SEO": all_category_data['seo'],
-        #content analysis
-        "Mobile Friendly" : mobile,
-        "Broken Link Count " : siteliner['brokenlinks'],
-        "Duplicate Count Percentage" : siteliner['duplicate'],
-        "Common Count Percentage" : siteliner['common'],
-        "Unique Count Percentage" : siteliner['unique'],
-        #metatag data
-        "Meta title" : data["Meta title"],
-        "Meta title count": data["Meta title count"],
-        "Meta description" : data["Meta description"],
-        "Meta description count" : data["Meta description count"],
-        "H1 count": data["H1 count"],
-        "H2 count" : data["H2 count"],
-        "H3 count" : data["H3 count"],
-        "H4 count" : data["H4 count"],
-        "H5 count" : data["H5 count"],
-        "H6 count" : data["H6 count"],
-        "Meta robots" : data["Meta robots"],
-        "Meta keywords" : data["Meta keywords"],
-        "Open Graph Status" : data["Open Graph Status"],
-        "Canonical Tag Present" : data["Canonical Tag Present"],
-        "Sitemap Present" : data["Sitemap Present"],
-        "Robots.txt Present" : data["Robots.txt Present"],
-        "Google Search Console Connected" : data["Google Search Console Connected"],
-        "Favicon Present" : data["Favicon Present"]
-    }
+def generate_notes(audit_data):
+    """
+    Menghasilkan catatan analisis dari data audit.
+    
+    Args:
+    - audit_data (dict): Dictionary berisi hasil audit SEO.
+    
+    Returns:
+    - str: Catatan analisis berdasarkan data audit.
+    """
     META_PROMPT = f"""
     Berikut adalah data hasil audit SEO untuk sebuah website:
 
-    {all_data}
+    {audit_data}
 
-    Tolong:
-    1. Identifikasi masalah utama dalam aspek SEO.
-    2. Berikan rekomendasi untuk meningkatkan skor dan performa SEO.
-    3. Berikan saran terkait hasil prediksi grade SEO.
+    Tolong buat catatan analisis detail berdasarkan data di atas:
+    1. Tulis setiap metrik dan nilainya apa adanya dari data.
+    2. Jelaskan apakah metrik tersebut dalam kategori baik, cukup, atau buruk (misalnya: skor <50 buruk, 50-89 cukup, ≥90 baik).
+    3. Hindari memberikan rekomendasi apa pun. Hanya fokus pada analisis masalah dari data.
+    4. Catatan harus netral dan deskriptif tanpa interpretasi tambahan.
     """
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[
-            {
-                "role": "system",
-                "content": META_PROMPT,
-            },
+            {"role": "system", "content": META_PROMPT},
             {
                 "role": "user",
-                "content": "berdasarkan data tersebut buat catatan mendetail yang berisi analisis permasalahan dan jangan berikan rekomendasi sama sekali,:\n",
+                "content": "Berdasarkan data tersebut, buat catatan mendetail yang berisi analisis permasalahan dan jangan berikan rekomendasi sama sekali.\n",
             },
         ],
     )
-
     return completion.choices[0].message.content
 
-def generate_recommendation(url, maxpages):
-    all_category_data = get_pagespeed_scores(url, strategy="mobile", categories=None)
-    data = scrape_metatags_and_structure(url)
-    structure_value = predict_seo_structure(url)
-    grade_category = grade_category(url)
-    mobile = mobile_friendly(url)
-    siteliner = siteliner_run_example(url, maxpages)
-    all_data = {
-        "URL" : url,
-        "Structure" : structure_value,
-        "Grade" : grade_category,
-        #pagespeed result
-        "Performance" : all_category_data['performance'],
-        "Accessibility" : all_category_data['accessibility'],
-        "Best Practices" : all_category_data['best-practices'],
-        "SEO": all_category_data['seo'],
-        #content analysis
-        "Mobile Friendly" : mobile,
-        "Broken Link Count " : siteliner['brokenlinks'],
-        "Duplicate Count Percentage" : siteliner['duplicate'],
-        "Common Count Percentage" : siteliner['common'],
-        "Unique Count Percentage" : siteliner['unique'],
-        #metatag data
-        "Meta title" : data["Meta title"],
-        "Meta title count": data["Meta title count"],
-        "Meta description" : data["Meta description"],
-        "Meta description count" : data["Meta description count"],
-        "H1 count": data["H1 count"],
-        "H2 count" : data["H2 count"],
-        "H3 count" : data["H3 count"],
-        "H4 count" : data["H4 count"],
-        "H5 count" : data["H5 count"],
-        "H6 count" : data["H6 count"],
-        "Meta robots" : data["Meta robots"],
-        "Meta keywords" : data["Meta keywords"],
-        "Open Graph Status" : data["Open Graph Status"],
-        "Canonical Tag Present" : data["Canonical Tag Present"],
-        "Sitemap Present" : data["Sitemap Present"],
-        "Robots.txt Present" : data["Robots.txt Present"],
-        "Google Search Console Connected" : data["Google Search Console Connected"],
-        "Favicon Present" : data["Favicon Present"]
-    }
+
+def generate_recommendation(audit_data):
+    """
+    Menghasilkan rekomendasi actionable dari data audit.
+    
+    Args:
+    - audit_data (dict): Dictionary berisi hasil audit SEO.
+    
+    Returns:
+    - str: Rekomendasi actionable berdasarkan data audit.
+    """
     META_PROMPT = f"""
     Berikut adalah data hasil audit SEO untuk sebuah website:
 
-    {all_data}
+    {audit_data}
 
-    Tolong:
-    1. Identifikasi masalah utama dalam aspek SEO.
-    2. Berikan rekomendasi untuk meningkatkan skor dan performa SEO.
-    3. Berikan saran terkait hasil prediksi grade SEO.
+    Tolong buat rekomendasi actionable untuk meningkatkan skor SEO dengan ketentuan berikut:
+    1. Berikan langkah-langkah spesifik untuk memperbaiki metrik dengan nilai di bawah 90.
+    2. Hindari menyebutkan metrik yang sudah baik (nilai ≥90).
+    3. Setiap rekomendasi harus menjelaskan penyebab masalah dan langkah solusi yang dapat dilakukan.
     """
     completion = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4",
         messages=[
-            {
-                "role": "system",
-                "content": META_PROMPT,
-            },
+            {"role": "system", "content": META_PROMPT},
             {
                 "role": "user",
-                "content": "berdasarkan data tersebut buat rekomendasi yang actionable, berisi langkah - langkah yang dapat dilakukan:\n",
+                "content": "Berdasarkan data tersebut, buat rekomendasi yang actionable, berisi langkah-langkah yang dapat dilakukan untuk memperbaiki masalah yang ditemukan.\n",
             },
         ],
     )
-
     return completion.choices[0].message.content
+
+def main_audit_process(url, maxpages=10):
+    """
+    Fungsi utama untuk melakukan audit SEO, menghasilkan notes, dan memberikan rekomendasi.
+    """
+    try:
+        print("=== Memulai Proses Audit SEO ===")
+        
+        # 1. Audit dengan fungsi pendukung
+        print(f"Melakukan audit SEO untuk URL: {url}")
+        all_category_data = get_pagespeed_scores(url, strategy="mobile", categories=None)
+        data = scrape_metatags_and_structure(url)
+        structure_value = predict_seo_structure(url)
+        grade_category_value = grade_category(url)
+        mobile = mobile_friendly(url)
+        siteliner = siteliner_run_example(url, maxpages)
+        
+        print("Audit selesai, menggabungkan data...")
+        all_data = {
+            "URL": url,
+            "Structure": structure_value,
+            "Grade": grade_category_value,
+            "Performance": all_category_data['performance'],
+            "Accessibility": all_category_data['accessibility'],
+            "Best Practices": all_category_data['best-practices'],
+            "SEO": all_category_data['seo'],
+            "Mobile Friendly": mobile,
+            "Broken Link Count": siteliner['brokenlinks'],
+            "Duplicate Count Percentage": siteliner['duplicate'],
+            "Common Count Percentage": siteliner['common'],
+            "Unique Count Percentage": siteliner['unique'],
+            "Meta title": data["Meta title"],
+            "Meta title count": data["Meta title count"],
+            "Meta description": data["Meta description"],
+            "Meta description count": data["Meta description count"],
+            "H1 count": data["H1 count"],
+            "H2 count": data["H2 count"],
+            "H3 count": data["H3 count"],
+            "Meta robots": data["Meta robots"],
+            "Meta keywords": data["Meta keywords"],
+            "Open Graph Status": data["Open Graph Status"],
+            "Canonical Tag Present": data["Canonical Tag Present"],
+            "Sitemap Present": data["Sitemap Present"],
+            "Robots.txt Present": data["Robots.txt Present"],
+            "Google Search Console Connected": data["Google Search Console Connected"],
+            "Favicon Present": data["Favicon Present"]
+        }
+        
+        # 2. Generate notes
+        print("Menghasilkan catatan analisis...")
+        notes = generate_notes(all_data)
+        
+        # 3. Generate recommendations
+        print("Menghasilkan rekomendasi actionable...")
+        recommendations = generate_recommendation(all_data)
+        
+        # 4. Gabungkan hasil
+        print("Menggabungkan hasil audit...")
+        result = {
+            "URL": url,
+            "Audit Data": all_data,
+            "Notes Analysis": notes,
+            "Actionable Recommendations": recommendations,
+        }
+        
+        print("=== Proses Audit Selesai ===")
+        return result
+
+    except Exception as e:
+        print(f"Terjadi kesalahan selama proses audit: {e}")
+        return {"error": str(e)}
+
